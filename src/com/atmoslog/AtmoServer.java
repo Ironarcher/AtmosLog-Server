@@ -1,8 +1,7 @@
 package com.atmoslog;
 
-import java.net.ServerSocket;
-import java.net.Socket;
-import java.io.IOException;
+import java.io.*;
+import java.net.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -11,7 +10,7 @@ import com.mongodb.DB;
 public class AtmoServer implements Runnable{
 
 	protected int serverPort = 8191;
-	protected ServerSocket socket = null;
+	protected DatagramSocket socket = null;
 	protected boolean running = true;
 	protected Thread runningThread = null;
 	protected ExecutorService threadPool = Executors.newFixedThreadPool(10);
@@ -27,10 +26,13 @@ public class AtmoServer implements Runnable{
 			this.runningThread = Thread.currentThread();
 		}
 		openServerSocket();
+		System.out.printf("Listening on udp:%s:%d%n",
+                InetAddress.getLocalHost().getHostAddress(), serverPort);
+		byte[] receiveData = new byte[4096];
+		DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
 		while(running){
-			Socket client = null;
 			try{
-				client = this.socket.accept();
+				socket.receive(receivePacket);
 			} catch (IOException e){
 				if(!running){
 					System.out.println("Server stopped.");
@@ -39,7 +41,7 @@ public class AtmoServer implements Runnable{
 				throw new RuntimeException(
 						"Error accepting client connection", e);
 			}
-			this.threadPool.execute(new WorkerRunnable(client, db));
+			this.threadPool.execute(new WorkerRunnable(socket, receivePacket, db));
 		}
 		this.threadPool.shutdown();
 		System.out.println("Server stopped.");
@@ -52,16 +54,12 @@ public class AtmoServer implements Runnable{
 	
 	public synchronized void stop(){
 		this.running = false;
-		try{
-			this.socket.close();
-		} catch (IOException e){
-			throw new RuntimeException("Error closing server", e);
-		}
+		this.socket.close();
 	}
 	
 	public void openServerSocket(){
 		try{
-			this.socket = new ServerSocket(this.serverPort);
+			this.socket = new DatagramSocket(this.serverPort);
 		} catch (IOException e){
 			throw new RuntimeException("Cannot open port " + this.serverPort, e);
 		}
